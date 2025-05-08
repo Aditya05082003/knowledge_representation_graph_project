@@ -1,0 +1,8 @@
+streamlit
+google-generativeai
+networkx
+pyvis
+python-dotenv
+requests
+beautifulsoup4
+PyMuPDF
