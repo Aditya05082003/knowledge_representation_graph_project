@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+import streamlit as st
 import os
 import google.generativeai as genai
 import networkx as nx
@@ -7,9 +7,6 @@ import tempfile
 import json
 import fitz  # PyMuPDF
 from dotenv import load_dotenv
-
-# Initialize Flask app
-app = Flask(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -33,7 +30,6 @@ def extract_relations_gemini(text):
     response = model.generate_content(prompt)
     return response.text
 
-# Parse Gemini's response into a list of triples
 def parse_relations(response_text):
     try:
         first_brace = response_text.find('[')
@@ -42,9 +38,9 @@ def parse_relations(response_text):
         triples = json.loads(response_text)
         return triples
     except Exception as e:
+        st.error(f"Failed to parse JSON: {e}")
         return []
 
-# Build graph from triples
 def build_graph(triples):
     g = nx.DiGraph()
     for triplet in triples:
@@ -53,7 +49,6 @@ def build_graph(triples):
         g.add_edge(triplet['subject'], triplet['object'], label=triplet['relation'])
     return g
 
-# Visualize the graph and save as HTML
 def visualize_graph(g):
     net = Network(height="600px", width="100%", directed=True)
     net.from_nx(g)
@@ -63,39 +58,38 @@ def visualize_graph(g):
     net.save_graph(path)
     return path
 
-# Extract text from uploaded PDF
-def extract_text_from_pdf(file):
-    doc = fitz.open(stream=file.read(), filetype="pdf")
+def extract_text_from_pdf(uploaded_file):
+    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
     text = "\n".join(page.get_text() for page in doc)
     return text
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    content = ""
-    graph_html = None
-    triples = []
+# Streamlit App
+st.set_page_config(page_title="Knowledge Graph Generator", layout="wide")
+st.title("🔗 Knowledge Representation Graph Generator")
 
-    if request.method == 'POST':
-        input_type = request.form.get('input_type')
+input_type = st.radio("Select Input Type", ["Text", "PDF File"])
 
-        if input_type == 'Text':
-            content = request.form.get('text_input')
-        elif input_type == 'PDF File':
-            file = request.files.get('pdf_file')
-            if file:
-                content = extract_text_from_pdf(file)
+content = ""
+if input_type == "Text":
+    content = st.text_area("Paste your content here", height=300)
+elif input_type == "PDF File":
+    uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+    if uploaded_file:
+        content = extract_text_from_pdf(uploaded_file)
 
-        if content.strip():
+if st.button("Generate Knowledge Graph"):
+    if not content.strip():
+        st.warning("Please provide content to analyze.")
+    else:
+        with st.spinner("Analyzing with Gemini..."):
             response_text = extract_relations_gemini(content)
             triples = parse_relations(response_text)
 
             if triples:
                 g = build_graph(triples)
                 graph_path = visualize_graph(g)
-                with open(graph_path, 'r', encoding='utf-8') as f:
-                    graph_html = f.read()
 
-    return render_template('index.html', graph_html=graph_html, triples=triples)
-
-if __name__ == '__main__':
-    app.run(debug=True)
+                st.success("Knowledge Graph Generated Successfully!")
+                st.components.v1.html(open(graph_path, 'r', encoding='utf-8').read(), height=600)
+            else:
+                st.warning("No relationships found.")
