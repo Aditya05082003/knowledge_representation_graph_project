@@ -1,4 +1,3 @@
-flask
 streamlit
 google-generativeai
 networkx
